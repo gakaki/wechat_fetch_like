@@ -17,6 +17,7 @@ namespace FiddlerExtensionWriteLog
     public class Violin : IAutoTamper    // Ensure class is public, or Fiddler won't see it!
     {
         StreamWriter w = File.AppendText("log.txt");
+
         public void Log(string logMessage, TextWriter w)
         {
             w.Write("\r\nLog Entry : ");
@@ -26,6 +27,8 @@ namespace FiddlerExtensionWriteLog
             w.WriteLine("  :{0}", logMessage);
             w.WriteLine("-------------------------------");
         }
+
+
         public Violin()
         {
       
@@ -47,32 +50,55 @@ namespace FiddlerExtensionWriteLog
         }
         public void AutoTamperRequestAfter(Session oSession) { }
         public void AutoTamperResponseBefore(Session oSession) { }
+
+
+
+
         public void AutoTamperResponseAfter(Session oSession)
         {
-            if (oSession.fullUrl.Contains("getappmsgext"))
+            MongoClient client  = new MongoClient("mongodb://127.0.0.1:27017");
+            var database        = client.GetDatabase("wechat_tmp");
+            var coll_tmp        = database.GetCollection<BsonDocument>("tmp");
+            var host            = oSession.host;
+            var full_url        = oSession.fullUrl;
+            var d               = new BsonDocument
             {
-                MongoClient client = new MongoClient("mongodb://127.0.0.1:27017");
+                {"url", full_url },
+                {"req", oSession.GetRequestBodyAsString()},//这里能存dict的话就更好了
+                {"resp", oSession.GetResponseBodyAsString()},//这里能把json解析了是更好了自然
+            };
 
-                //var d = new Dictionary<string,string>
-                var d = new BsonDocument
+            if ( host.Contains("mp.weixin.qq.com") )
+            {
+                if (full_url.Contains("/s?src="))
                 {
-                    {"url", oSession.fullUrl },
-                    {"req", oSession.GetRequestBodyAsString()},
-                    {"resp", oSession.GetResponseBodyAsString()},
-                    
-                };
-                //write mongodb 
+                    d["type"] = "origin";
+                    coll_tmp.InsertOne(d);
+                }
 
-
-                var database = client.GetDatabase("xcar");
-                var collection = database.GetCollection<BsonDocument>("like_nums");
-                collection.InsertOne(d);
+                if (full_url.Contains("/s?__biz"))
+                {
+                    d["type"] = "webview";
+                    coll_tmp.InsertOne(d);
+                }
+                if (full_url.Contains("/mp/appmsgreport"))
+                {
+                    d["type"] = "report";
+                    coll_tmp.InsertOne(d);
+                }
+                if (full_url.Contains("/mp/getappmsgext"))
+                {
+                    d["type"] = "like";
+                    coll_tmp.InsertOne(d);
+                }
+                if (full_url.Contains("/mp/appmsg_comment?"))
+                {
+                    d["type"] = "comment";
+                    coll_tmp.InsertOne(d);
+                }
             }
-
-               
-
             
-           
+
         }
 
         public void OnBeforeReturningError(Session oSession) { }
